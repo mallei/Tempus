@@ -10,21 +10,47 @@ fn main() -> eframe::Result {
 }
 
 struct Tempus {
-    test: String
+    tab: Tab
 }
 
 impl Default for Tempus {
     fn default() -> Self {
        Self {
-        test: String::new()
+        tab: Tab::Timer
        } 
     }
+}
+
+#[derive(PartialEq)]
+enum Tab {
+    Timer,
+    Settings
 }
 
 impl eframe::App for Tempus {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
         egui::CentralPanel::default().show(ui, |ui| {
-            ui.heading("Test App");
+            ui.horizontal(|ui| {
+                ui.selectable_value(&mut self.tab, Tab::Timer, "⏰ Timer");
+                ui.selectable_value(&mut self.tab, Tab::Settings, "⛭ Settings");
+            });
+
+            ui.separator();
+
+            match self.tab {
+                Tab::Timer => self.timer_tab(ui),
+                Tab::Settings => self.settings_tab(ui),
+            }
         });
+    }
+}
+
+impl Tempus {
+    fn timer_tab(&mut self, ui: &mut egui::Ui) {
+        ui.label("timer");
+    }
+
+    fn settings_tab(&mut self, ui: &mut egui::Ui) {
+        ui.label("settings");
     }
 }
