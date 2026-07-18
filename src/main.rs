@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
 use eframe::egui::{self, Button, Color32, RichText};
+use std::time::{Duration, Instant};
 
 fn main() -> eframe::Result {
     let options = eframe::NativeOptions {
@@ -28,6 +29,7 @@ struct Tempus {
     session_type: SessionType,
     session_count: u8,
     timer_settings: TimerSettings,
+    last_update: Instant,
 }
 
 impl Default for Tempus {
@@ -46,6 +48,7 @@ impl Default for Tempus {
                 long_break_duration: 15 * 60,
                 rounds: 4,
             },
+            last_update: Instant::now(),
         }
     }
 }
@@ -63,8 +66,45 @@ enum Tab {
     Settings,
 }
 
+impl Tempus {
+    fn switch_session(&mut self) {
+        match self.session_type {
+            SessionType::Focus => {
+                if (self.session_count + 1) % self.timer_settings.rounds == 0 {
+                    self.time_left = self.timer_settings.long_break_duration;
+                } else {
+                    self.time_left = self.timer_settings.short_break_duration;
+                }
+                self.session_type = SessionType::Break;
+            }
+            SessionType::Break => {
+                self.session_count += 1;
+                self.time_left = self.timer_settings.focus_duration;
+                self.session_type = SessionType::Focus;
+            }
+        }
+    }
+}
+
 impl eframe::App for Tempus {
     fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+        if self.is_running {
+            let elapsed = self.last_update.elapsed();
+            let secs = elapsed.as_secs() as u32;
+
+            if secs > 0 {
+                self.time_left = self.time_left.saturating_sub(secs);
+                self.last_update += Duration::from_secs(secs as u64);
+
+                if self.time_left == 0 {
+                    self.is_running = false;
+                    self.switch_session();
+                }
+            }
+
+            ui.request_repaint_after(Duration::from_millis(100));
+        }
+
         egui::CentralPanel::default().show(ui, |ui| {
             ui.horizontal(|ui| {
                 ui.selectable_value(&mut self.tab, Tab::Timer, "⏰ Timer");
@@ -85,7 +125,13 @@ impl Tempus {
     fn timer_tab(&mut self, ui: &mut egui::Ui) {
         ui.label(
             RichText::new(format!(
-                "00:04:12 {}",
+                "{} {}",
+                format!(
+                    "{:02}:{:02}:{:02}",
+                    self.time_left / 3600,
+                    (self.time_left % 3600) / 60,
+                    self.time_left % 60
+                ),
                 match self.session_type {
                     SessionType::Focus => "Focus",
                     SessionType::Break => "Break",
@@ -107,25 +153,31 @@ impl Tempus {
 
         ui.horizontal(|ui| {
             if ui.button("Reset").clicked() {
-                todo!();
+                self.is_running = false;
+                self.time_left = match self.session_type {
+                    SessionType::Focus => self.timer_settings.focus_duration,
+                    SessionType::Break => self.timer_settings.short_break_duration,
+                };
             }
 
             if ui
-                .add_enabled(!self.is_running, Button::new("Start"))
+                .add_enabled(self.time_left > 0 && !self.is_running, Button::new("Start"))
                 .clicked()
             {
-                todo!();
+                self.is_running = true;
+                self.last_update = Instant::now();
             }
 
             if ui
                 .add_enabled(self.is_running, Button::new("Stop"))
                 .clicked()
             {
-                todo!();
+                self.is_running = false;
             }
 
             if ui.button("Skip").clicked() {
-                todo!();
+                self.is_running = false;
+                self.switch_session();
             }
         });
     }
