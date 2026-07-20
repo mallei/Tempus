@@ -1,6 +1,8 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")] // hide console window on Windows in release
 
+use actually_beep::beep_with_hz_and_millis;
 use eframe::egui::{self, Button, Color32, RichText};
+use notify_rust::Notification;
 use serde::{Deserialize, Serialize};
 use std::time::{Duration, Instant};
 
@@ -43,6 +45,8 @@ impl Tempus {
                 focus_duration: 25 * 60,
                 short_break_duration: 5 * 60,
                 long_break_duration: 15 * 60,
+                dark_mode: true,
+                notifications: true,
                 rounds: 4,
             });
 
@@ -64,6 +68,8 @@ struct TimerSettings {
     short_break_duration: u32,
     long_break_duration: u32,
     rounds: u8,
+    dark_mode: bool,
+    notifications: bool,
 }
 
 #[derive(PartialEq)]
@@ -81,14 +87,29 @@ impl Tempus {
         match self.session_type {
             SessionType::Focus => {
                 self.time_left = if (self.session_count + 1) % self.timer_settings.rounds == 0 {
+                    if self.timer_settings.notifications {
+                        Notification::new()
+                            .body("Time to take a long break!")
+                            .show()
+                            .unwrap();
+                    }
                     self.timer_settings.long_break_duration
                 } else {
+                    if self.timer_settings.notifications {
+                        Notification::new()
+                            .body("Time to take a short break!")
+                            .show()
+                            .unwrap();
+                    }
                     self.timer_settings.short_break_duration
                 };
                 self.session_type = SessionType::Break;
             }
             SessionType::Break => {
                 self.session_count += 1;
+                if self.timer_settings.notifications {
+                    Notification::new().body("Time to focus!").show().unwrap();
+                }
                 self.time_left = self.timer_settings.focus_duration;
                 self.session_type = SessionType::Focus;
             }
@@ -112,6 +133,7 @@ impl eframe::App for Tempus {
 
                 if self.time_left == 0 {
                     self.is_running = false;
+                    beep_with_hz_and_millis(600, 450).unwrap();
                     self.switch_session();
                 }
             }
@@ -170,7 +192,9 @@ impl Tempus {
                 self.is_running = false;
                 self.time_left = match self.session_type {
                     SessionType::Focus => self.timer_settings.focus_duration,
-                    SessionType::Break if self.is_long_break() => self.timer_settings.long_break_duration,
+                    SessionType::Break if self.is_long_break() => {
+                        self.timer_settings.long_break_duration
+                    }
                     SessionType::Break => self.timer_settings.short_break_duration,
                 };
             }
@@ -198,51 +222,77 @@ impl Tempus {
     }
 
     fn settings_tab(&mut self, ui: &mut egui::Ui) {
-        ui.label("Focus Duration (min)");
-        {
-            let mut val = self.timer_settings.focus_duration / 60;
-            if ui.add(egui::Slider::new(&mut val, 1..=120)).changed() {
-                self.timer_settings.focus_duration = val * 60;
-                if !self.is_running && matches!(self.session_type, SessionType::Focus) {
-                    self.time_left = self.timer_settings.focus_duration;
+        ui.columns(2, |cols| {
+            cols[0].vertical(|ui| {
+                ui.label("Focus Duration (min)");
+                {
+                    let mut val = self.timer_settings.focus_duration / 60;
+                    if ui.add(egui::Slider::new(&mut val, 1..=120)).changed() {
+                        self.timer_settings.focus_duration = val * 60;
+                        if !self.is_running && matches!(self.session_type, SessionType::Focus) {
+                            self.time_left = self.timer_settings.focus_duration;
+                        }
+                    }
                 }
-            }
-        }
 
-        ui.add_space(8.0);
+                ui.add_space(8.0);
 
-        ui.label("Short Break Duration (min)");
-        {
-            let mut val = self.timer_settings.short_break_duration / 60;
-            if ui.add(egui::Slider::new(&mut val, 1..=60)).changed() {
-                self.timer_settings.short_break_duration = val * 60;
-                if !self.is_running && !self.is_long_break() && matches!(self.session_type, SessionType::Break) {
-                    self.time_left = self.timer_settings.short_break_duration;
+                ui.label("Short Break Duration (min)");
+                {
+                    let mut val = self.timer_settings.short_break_duration / 60;
+                    if ui.add(egui::Slider::new(&mut val, 1..=60)).changed() {
+                        self.timer_settings.short_break_duration = val * 60;
+                        if !self.is_running
+                            && !self.is_long_break()
+                            && matches!(self.session_type, SessionType::Break)
+                        {
+                            self.time_left = self.timer_settings.short_break_duration;
+                        }
+                    }
                 }
-            }
-        }
 
-        ui.add_space(8.0);
+                ui.add_space(8.0);
 
-        ui.label("Long Break Duration (min)");
-        {
-            let mut val = self.timer_settings.long_break_duration / 60;
-            if ui.add(egui::Slider::new(&mut val, 1..=60)).changed() {
-                self.timer_settings.long_break_duration = val * 60;
-                if !self.is_running && self.is_long_break() && matches!(self.session_type, SessionType::Break) {
-                    self.time_left = self.timer_settings.long_break_duration;
+                ui.label("Long Break Duration (min)");
+                {
+                    let mut val = self.timer_settings.long_break_duration / 60;
+                    if ui.add(egui::Slider::new(&mut val, 1..=60)).changed() {
+                        self.timer_settings.long_break_duration = val * 60;
+                        if !self.is_running
+                            && self.is_long_break()
+                            && matches!(self.session_type, SessionType::Break)
+                        {
+                            self.time_left = self.timer_settings.long_break_duration;
+                        }
+                    }
                 }
-            }
-        }
 
-        ui.add_space(8.0);
+                ui.add_space(8.0);
 
-        ui.label("Rounds");
-        {
-            let mut val = self.timer_settings.rounds;
-            if ui.add(egui::Slider::new(&mut val, 1..=20)).changed() {
-                self.timer_settings.rounds = val;
-            }
-        }
+                ui.label("Rounds");
+                {
+                    let mut val = self.timer_settings.rounds;
+                    if ui.add(egui::Slider::new(&mut val, 1..=20)).changed() {
+                        self.timer_settings.rounds = val;
+                    }
+                }
+            });
+            cols[1].vertical(|ui| {
+                ui.checkbox(&mut self.timer_settings.notifications, "Notifications");
+
+                ui.add_space(8.0);
+
+                if ui
+                    .checkbox(&mut self.timer_settings.dark_mode, "Dark Mode")
+                    .changed()
+                {
+                    if self.timer_settings.dark_mode {
+                        ui.set_theme(egui::Theme::Dark);
+                    } else {
+                        ui.set_theme(egui::Theme::Light);
+                    }
+                }
+            });
+        });
     }
 }
