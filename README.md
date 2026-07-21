@@ -4,8 +4,8 @@
   <p align="center">A simple Pomodoro timer for simple people</p>
 </p>
 
-<img src="./images/screenshot1.png" width="100%" alt="Screenshot 1">
-<img src="./images/screenshot2.png" width="100%" alt="Screenshot 2">
+<img src="./images/screenshot1.png" width="49%" alt="Screenshot 1">
+<img src="./images/screenshot2.png" width="49%" alt="Screenshot 2">
 
 ## Features
 
